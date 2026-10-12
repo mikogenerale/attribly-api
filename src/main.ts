@@ -14,6 +14,10 @@ async function bootstrap() {
     defaultVersion: '1',
   });
 
-  await app.listen(process.env.PORT ?? 5000);
+  if (process.env.API_PORT) {
+    await app.listen(process.env.API_PORT);
+  } else {
+    console.error('API_PORT environment variable is not set. Please set it in your .env file.');
+  }
 }
 await bootstrap();
