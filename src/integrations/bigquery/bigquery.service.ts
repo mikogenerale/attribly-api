@@ -28,7 +28,12 @@ export class BigQueryService {
 
     const [tables] = await dataset.getTables();
 
-    return tables
+    // Table objects reference the BigQuery client, so return plain fields only.
+    return tables.map(({ id, metadata }) => ({
+      id,
+      type: metadata?.type ?? null,
+      creationTime: metadata?.creationTime ?? null,
+    }));
   }
 
   async getTableData(clientProjectId: string, datasetId: string, tableId: string, pageToken?: string ) {
