@@ -1,114 +1,130 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# Attribly API
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+NestJS API for Attribly. It handles sign-in and organizations with Better Auth on Supabase Postgres, and reads each client's data live from BigQuery.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+## Stack
 
-## Description
+- NestJS 12, TypeScript, ES modules (use `.js` in relative imports)
+- Better Auth through `@thallesp/nestjs-better-auth`: email and password, Google OAuth, organizations
+- Supabase Postgres through the session pooler, queried with Drizzle ORM
+- Resend for email
+- BigQuery for client data
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+## Running locally
 
-## Project setup
+Requires Node and pnpm.
 
 ```bash
-$ npm install
+pnpm install
+cp .env.sample .env.local   # then fill in the values below
+pnpm dev                    # runs auth:migrate, then nest start --watch
 ```
 
-## Compile and run the project
+### Environment variables
+
+| Variable | What it is |
+| --- | --- |
+| `API_PORT` | Port this API listens on |
+| `UI_PORT` | Port of the UI, used to build `UI_URL` |
+| `UI_URL` | UI origin. Used for CORS, Better Auth trusted origins and email links |
+| `DATABASE_URL` | Supabase Postgres connection string (see below) |
+| `BETTER_AUTH_URL` | Public URL of this API. Used to build OAuth callback URLs |
+| `RESEND_API_KEY` | Resend API key |
+| `EMAIL_FROM` | Sender, for example `Attribly <no-reply@mail.yourdomain.com>`. The domain must be verified in Resend |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Google OAuth credentials |
+| `BIGQUERY_QUERY_PROJECT_ID` | The app's own GCP project used to run BigQuery queries |
+
+- Write real values. `.env.local` does not expand `${API_PORT}`-style references, so `BETTER_AUTH_URL=http://localhost:${API_PORT}` is read as literal text and fails. Use `http://localhost:4000` and so on.
+- `DATABASE_URL` should be the **session pooler** string (`postgres.<ref>@…pooler.supabase.com:5432`). Supabase's direct host (`db.<ref>.supabase.co`) is IPv6-only and fails with `ENOTFOUND` on IPv4 networks.
+- Google redirect URI: `<BETTER_AUTH_URL>/api/auth/callback/google`.
+- BigQuery uses Google application default credentials. Locally, run `gcloud auth application-default login`.
+
+### Scripts
+
+| Command | What it does |
+| --- | --- |
+| `pnpm dev` | Apply Better Auth migrations, then start in watch mode |
+| `pnpm build` / `pnpm start:prod` | Build, then run `dist/main` |
+| `pnpm lint` / `pnpm format` | oxlint / prettier |
+| `pnpm test` / `pnpm test:e2e` | Unit / end-to-end tests (vitest) |
+| `pnpm auth:migrate` | Create or update Better Auth's tables |
+| `pnpm db:new <name>` | New Supabase migration file |
+| `pnpm db:push` | Apply pending Supabase migrations |
+
+## Database and migrations
+
+Each table has exactly one owner, so the schema history never splits.
+
+- **Better Auth owns its tables** (`user`, `session`, `account`, `verification`, `organization`, `member`, `invitation`). Change them only through `pnpm auth:migrate`. Config for the CLI is `src/auth/auth.cli.ts`, so keep its plugins in line with `src/auth/auth.ts`.
+- **Supabase migrations own every custom table** (`supabase/migrations`). Run `pnpm auth:migrate` first, because custom tables can reference Better Auth's.
+- **Drizzle is only for queries.** `src/database/schema.ts` mirrors the tables. After a migration, run `pnpm exec drizzle-kit pull` to refresh it. Never run `drizzle-kit push` or `generate`, since that would change tables outside the Supabase history.
+
+One-time Supabase setup:
 
 ```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
+npx supabase init                          # if supabase/config.toml does not exist
+npx supabase login
+npx supabase link --project-ref <ref>      # the ID in https://<ref>.supabase.co
 ```
 
-## Run tests
+Adding a table:
 
 ```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
+pnpm db:new add_something                  # write the SQL in the new file
+npx supabase db push --dry-run             # preview
+pnpm db:push
 ```
 
-## Deployment
+Never edit a migration that has been pushed. Add a new one. Enable row level security on every table, because Supabase exposes the `public` schema through its Data API.
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+## Data model
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
-
-```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+```
+Organization
+└── Project     a row in Postgres, one per GCP project
+    └── Store   a BigQuery dataset in that GCP project, read live
+        └── Table
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+- An organization has many projects. A user reaches a project only through an organization they belong to.
+- **Projects are created by operators, not through the API.** The backend reads BigQuery with its own credentials, so letting customers type a GCP project ID would let them read other tenants' data:
 
-## Observability
+  ```sql
+  insert into project (organization_id, name, gcp_project_id)
+  values ('<organization id>', 'Store A', 'their-gcp-project');
+  ```
 
-In production applications, observability is essential for understanding how your system behaves, detecting issues early, and maintaining reliable performance.
+- Stores are not saved in Postgres. They are listed from BigQuery on each request.
+- Users cannot create organizations (`allowUserToCreateOrganization: false`). Operators create them.
 
-[NestJS Observe](https://observe.nestjs.com) automatically instruments your NestJS application, giving you deep visibility into your system with minimal setup:
+## API
 
-- **Distributed tracing:** Follow requests across services and understand how they flow through your system.
-- **Waterfall analysis:** Visualize request execution and identify slow operations, bottlenecks, and unexpected delays.
-- **Performance analysis:** Analyze application performance in real time and quickly pinpoint areas that need optimization.
-- **Metrics:** Track key application and infrastructure metrics to understand system health and performance trends.
-- **Logging:** Centralize and correlate logs with traces and other telemetry to make debugging easier.
-- **Error tracking:** Detect errors quickly and investigate their root causes with the surrounding context.
-- **SLA monitoring:** Track service-level objectives and identify when your application is approaching or exceeding defined thresholds.
-- **Alarms and alerts:** Set up alerts for critical errors, performance degradation, SLA violations, and other anomalies so your team can react quickly.
+Global prefix `/api`, URI versioning with `v1` as the default.
 
-## Resources
+**Auth** is served by Better Auth at `/api/auth/*` (unversioned): `sign-up/email`, `sign-in/email`, `sign-in/social`, `sign-out`, `get-session`, password reset, and the organization endpoints. Dashboard routes need a session with an **active organization**.
 
-Check out a few resources that may come in handy when working with NestJS:
+**Dashboard** routes require a signed-in member (owner, admin or member) of the active organization:
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Auto-instrument your application with [NestJS Observe](https://observe.nestjs.com). Distributed tracing, metrics, and logging made easy. Error tracking and performance monitoring for your NestJS applications.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+| Method | Path | Returns |
+| --- | --- | --- |
+| GET | `/api/v1/projects` | The organization's projects |
+| GET | `/api/v1/stores` | Datasets in the project |
+| GET | `/api/v1/stores/:datasetId` | One dataset |
+| GET | `/api/v1/stores/:datasetId/tables` | Tables in the dataset |
+| GET | `/api/v1/stores/:datasetId/tables/:tableId?pageToken=` | Table rows, paged |
 
-## Support
+All `stores` routes take an optional `?projectId=<project id>`. It may be left out when the organization has exactly one project, and is required when it has several. The GCP project is always looked up from the project table for the session's active organization, never taken from the request.
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+## Project structure
 
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+```
+src/
+  auth/             Better Auth setup, organization plugin, CLI config
+  config/           env loading, auth option helpers
+  database/         shared pg pool, Drizzle client, schema
+  email/            Resend email service
+  projects/         projects service and read-only endpoint
+  dashboard/store/  store endpoints (BigQuery datasets)
+  integrations/     BigQuery client
+supabase/migrations/  SQL for custom tables
+```
