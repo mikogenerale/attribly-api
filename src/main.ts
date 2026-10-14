@@ -1,17 +1,15 @@
 import { NestFactory } from '@nestjs/core';
-import { AppModule } from './app.module.js';
 import { VersioningType } from '@nestjs/common';
+import { AppModule } from './app.module.js';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, {
-    bodyParser: false,
-  });
+  const app = await NestFactory.create(AppModule, { bodyParser: false });
 
   app.setGlobalPrefix('api');
-
-  app.enableVersioning({
-    type: VersioningType.URI,
-    defaultVersion: '1',
+  app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
+  app.enableCors({
+    origin: process.env.UI_URL!!,
+    credentials: true,
   });
 
   if (process.env.API_PORT) {
