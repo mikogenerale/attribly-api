@@ -1,31 +1,38 @@
 import { Injectable } from '@nestjs/common';
 import { BigQueryService } from '../../integrations/bigquery/bigquery.service.js';
+import { ProjectsService } from '../../projects/projects.service.js';
 
 @Injectable()
 export class StoreService {
-    private readonly clientProjectId = 'bari-group-by-ubec';
-
     constructor(
-        private readonly bigQueryService: BigQueryService
+        private readonly bigQueryService: BigQueryService,
+        private readonly projectsService: ProjectsService,
     ) {}
 
-    async getStores() {
-        const stores = await this.bigQueryService.listDatasets(this.clientProjectId);
+    // The BigQuery project is always looked up in the project table for the
+    // session's active organization, so it never trusts a GCP project or org ID
+    // sent by the client. projectId only chooses between that organization's
+    // own projects, and may be omitted when it has exactly one.
+
+    async getStores(headers: Headers, projectId?: string) {
+        const gcpProjectId = await this.projectsService.resolveGcpProjectId(headers, projectId);
+        const stores = await this.bigQueryService.listDatasets(gcpProjectId);
         return { content: stores };
     }
 
-    async getStoreById(datasetId: string) {
-        const store = await this.bigQueryService.getDataset(this.clientProjectId, datasetId);
-        return store;
+    async getStoreById(headers: Headers, datasetId: string, projectId?: string) {
+        const gcpProjectId = await this.projectsService.resolveGcpProjectId(headers, projectId);
+        return await this.bigQueryService.getDataset(gcpProjectId, datasetId);
     }
 
-    async getStoreTables(datasetId: string) {
-        const tables = await this.bigQueryService.getTables(this.clientProjectId, datasetId);
+    async getStoreTables(headers: Headers, datasetId: string, projectId?: string) {
+        const gcpProjectId = await this.projectsService.resolveGcpProjectId(headers, projectId);
+        const tables = await this.bigQueryService.getTables(gcpProjectId, datasetId);
         return { content: tables };
     }
 
-    async getStoreTableData(datasetId: string, tableId: string, pageToken?: string) {
-        const tableData = await this.bigQueryService.getTableData(this.clientProjectId, datasetId, tableId, pageToken);
-        return tableData;
+    async getStoreTableData(headers: Headers, datasetId: string, tableId: string, pageToken?: string, projectId?: string) {
+        const gcpProjectId = await this.projectsService.resolveGcpProjectId(headers, projectId);
+        return await this.bigQueryService.getTableData(gcpProjectId, datasetId, tableId, pageToken);
     }
 }
