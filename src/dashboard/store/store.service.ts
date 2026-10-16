@@ -9,30 +9,16 @@ export class StoreService {
         private readonly projectsService: ProjectsService,
     ) {}
 
-    // The BigQuery project is always looked up in the project table for the
-    // session's active organization, so it never trusts a GCP project or org ID
-    // sent by the client. projectId only chooses between that organization's
-    // own projects, and may be omitted when it has exactly one.
-
-    async getStores(headers: Headers, projectId?: string) {
-        const gcpProjectId = await this.projectsService.resolveGcpProjectId(headers, projectId);
+    async getStores(headers: Headers) {
+        const gcpProjectId = await this.projectsService.resolveClientProjectId(headers);
         const stores = await this.bigQueryService.listDatasets(gcpProjectId);
         return { content: stores };
     }
 
-    async getStoreById(headers: Headers, datasetId: string, projectId?: string) {
-        const gcpProjectId = await this.projectsService.resolveGcpProjectId(headers, projectId);
-        return await this.bigQueryService.getDataset(gcpProjectId, datasetId);
-    }
-
-    async getStoreTables(headers: Headers, datasetId: string, projectId?: string) {
-        const gcpProjectId = await this.projectsService.resolveGcpProjectId(headers, projectId);
-        const tables = await this.bigQueryService.getTables(gcpProjectId, datasetId);
-        return { content: tables };
-    }
-
-    async getStoreTableData(headers: Headers, datasetId: string, tableId: string, pageToken?: string, projectId?: string) {
-        const gcpProjectId = await this.projectsService.resolveGcpProjectId(headers, projectId);
-        return await this.bigQueryService.getTableData(gcpProjectId, datasetId, tableId, pageToken);
+    // Per-campaign rows of the store's combined ads view.
+    async getCombinedStoreAdsPerformance(headers: Headers, storeId: string) {
+        const gcpProjectId = await this.projectsService.resolveClientProjectId(headers);
+        const content = await this.bigQueryService.getCombinedStoreAdsPerformance(gcpProjectId, storeId);
+        return { content };
     }
 }

@@ -1,6 +1,6 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { AuthService } from '@thallesp/nestjs-better-auth';
-import { and, asc, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import type { Auth } from '../auth/auth.js';
 import { DRIZZLE, type Db } from '../database/database.module.js';
 import { project } from '../database/schema.js';
@@ -21,34 +21,17 @@ export class ProjectsService {
     return orgId;
   }
 
-  async list(headers: Headers) {
+  // The organization comes from the session, never from the request.
+  // For now each organization has exactly one BigQuery project.
+  async resolveClientProjectId(headers: Headers): Promise<string> {
     const orgId = await this.activeOrganizationId(headers);
-    return this.db
-      .select({ id: project.id, name: project.name, gcpProjectId: project.gcpProjectId })
-      .from(project)
-      .where(eq(project.organizationId, orgId))
-      .orderBy(asc(project.name));
-  }
-
-  // Returns the GCP project id to query. With a projectId it must belong to the
-  // active organization. Without one, it works only if the organization has
-  // exactly one project, so single-project organizations keep working unchanged.
-  async resolveGcpProjectId(headers: Headers, projectId?: string): Promise<string> {
-    const orgId = await this.activeOrganizationId(headers);
-    const rows = await this.db
+    const [row] = await this.db
       .select({ gcpProjectId: project.gcpProjectId })
       .from(project)
-      .where(and(eq(project.organizationId, orgId), projectId ? eq(project.id, projectId) : undefined))
-      .limit(2);
+      .where(eq(project.organizationId, orgId))
+      .limit(1);
 
-    if (rows.length === 0) {
-      throw new NotFoundException(
-        projectId ? 'Project not found' : 'No BigQuery project connected to this organization',
-      );
-    }
-    if (rows.length > 1) {
-      throw new BadRequestException('projectId is required: this organization has several projects');
-    }
-    return rows[0].gcpProjectId;
+    if (!row) throw new NotFoundException('No BigQuery project connected to this organization');
+    return row.gcpProjectId;
   }
 }
