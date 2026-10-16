@@ -107,13 +107,10 @@ Global prefix `/api`, URI versioning with `v1` as the default.
 
 | Method | Path | Returns |
 | --- | --- | --- |
-| GET | `/api/v1/projects` | The organization's projects |
-| GET | `/api/v1/stores` | Datasets in the project |
-| GET | `/api/v1/stores/:datasetId` | One dataset |
-| GET | `/api/v1/stores/:datasetId/tables` | Tables in the dataset |
-| GET | `/api/v1/stores/:datasetId/tables/:tableId?pageToken=` | Table rows, paged |
+| GET | `/api/v1/stores` | Datasets in the organization's project |
+| GET | `/api/v1/stores/:storeId/performance` | Per-campaign rows of the store's combined ads view |
 
-All `stores` routes take an optional `?projectId=<project id>`. It may be left out when the organization has exactly one project, and is required when it has several. The GCP project is always looked up from the project table for the session's active organization, never taken from the request.
+The GCP project is always looked up from the project table for the session's active organization (one project per organization for now), never taken from the request.
 
 ## Project structure
 
@@ -123,7 +120,7 @@ src/
   config/           env loading, auth option helpers
   database/         shared pg pool, Drizzle client, schema
   email/            Resend email service
-  projects/         projects service and read-only endpoint
+  projects/         resolves the active organization's GCP project
   dashboard/store/  store endpoints (BigQuery datasets)
   integrations/     BigQuery client
 supabase/migrations/  SQL for custom tables
